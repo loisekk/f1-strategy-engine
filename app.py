@@ -1007,7 +1007,7 @@ def render_telemetry(df):
             fig_vio.add_trace(go.Violin(
                 y=d["LapTime (s)"], name=drv,
                 box_visible=True, meanline_visible=True,
-                fillcolor=DRIVER_PALETTE[i % len(DRIVER_PALETTE)] + "30",
+                fillcolor=COMPOUND_COLORS.get("SOFF", "#E10600") + "20",
                 line_color=DRIVER_PALETTE[i % len(DRIVER_PALETTE)],
                 points=False,
                 hovertemplate=f"<b>{drv}</b><br>%{{y:.3f}}s<extra></extra>"
