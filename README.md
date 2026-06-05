@@ -22,6 +22,7 @@
 ![Dataset](https://img.shields.io/badge/Telemetry%20Laps-101%2C371-3b82f6?style=flat-square)
 ![AUC](https://img.shields.io/badge/Best%20CV%20AUC-0.9869%20(XGBoost)-22c55e?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-888888?style=flat-square)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://f1-strategy-engine-asghcuc5n7idh2ucgk7upy.streamlit.app/)
 
 </div>
 
@@ -38,6 +39,12 @@ This is not a tutorial notebook. It is a **full data science product** covering:
 - Three production-grade classifiers trained, tuned via RandomizedSearchCV, and threshold-optimised
 - Serialised model artefacts in size-efficient formats (XGBoost native `.json`)
 - A Streamlit dashboard with F1 dark theme, 3D Plotly explorers, and live inference UI
+
+---
+
+## 🚀 Live Demo
+
+**[→ Open the app](https://f1-strategy-engine-asghcuc5n7idh2ucgk7upy.streamlit.app/)**
 
 ---
 
