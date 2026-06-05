@@ -1,5 +1,5 @@
 """
-F1 DIGITAL TWIN PIT STRATEGY COMMAND CENTER
+F1 PIT WALL — PIT STRATEGY COMMAND CENTER
 ============================================
 Production-grade ML-powered race strategy intelligence platform.
 Built to look and feel like software used by actual F1 teams.
@@ -17,6 +17,7 @@ import warnings
 import math
 import random
 import time
+import os
 
 warnings.filterwarnings("ignore")
 
@@ -369,9 +370,37 @@ def load_data():
 
 @st.cache_resource(show_spinner=False)
 def load_model():
+    path = "f1_pitstop_model.json"
+    if not os.path.exists(path):
+        with st.spinner("Training pit-stop model (one-time, ~30s)..."):
+            _train_pitstop_model(path)
     model = xgb.XGBClassifier()
-    model.load_model("f1_pitstop_model.json")
+    model.load_model(path)
     return model
+
+def _train_pitstop_model(path):
+    df = pd.read_csv("f1_strategy_dataset_v4.csv")
+    for col in ["Driver", "Compound", "Race"]:
+        df[col] = LabelEncoder().fit_transform(df[col].astype(str))
+
+    features = [
+        "LapNumber", "Stint", "TyreLife", "Position", "LapTime (s)",
+        "RaceProgress", "Cumulative_Degradation", "LapTime_Delta",
+        "Normalized_TyreLife", "Position_Change",
+        "Driver", "Compound", "Race",
+    ]
+    target = "PitNextLap"
+    df = df.dropna(subset=features + [target])
+    X = df[features]
+    y = df[target].astype(int)
+
+    model = xgb.XGBClassifier(
+        n_estimators=400, learning_rate=0.05, max_depth=5,
+        subsample=0.8, colsample_bytree=0.8,
+        eval_metric="auc", n_jobs=-1, random_state=42,
+    )
+    model.fit(X, y)
+    model.save_model(path)
 
 @st.cache_data(show_spinner=False)
 def build_encoders(_df):
@@ -442,6 +471,11 @@ COMPOUND_COLORS = {
     "INTERMEDIATE": "#00E06A",
     "WET": "#00C8FF",
 }
+
+def _hex_to_rgba(hex_color, alpha):
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
 
 # ─────────────────────────────────────────────────────────
 # PREDICTION ENGINE
@@ -589,7 +623,7 @@ def render_hero():
         <div style="font-family:Orbitron,sans-serif;font-size:0.52rem;letter-spacing:0.3em;color:#E10600;margin-bottom:0.5rem;text-transform:uppercase;">
           &#9658; LIVE RACE INTELLIGENCE SYSTEM
         </div>
-        <div style="font-family:Orbitron,sans-serif;font-size:2.1rem;font-weight:900;margin:0 0 0.25rem;letter-spacing:0.04em;color:#FFFFFF;line-height:1.1;">F1 DIGITAL TWIN</div>
+        <div style="font-family:Orbitron,sans-serif;font-size:2.1rem;font-weight:900;margin:0 0 0.25rem;letter-spacing:0.04em;color:#FFFFFF;line-height:1.1;">F1 PIT WALL</div>
         <div style="font-family:Orbitron,sans-serif;font-size:0.95rem;font-weight:400;color:#00C8FF;margin:0 0 0.9rem;letter-spacing:0.12em;">PIT STRATEGY COMMAND CENTER</div>
         <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
           <span style="background:rgba(225,6,0,0.12);border:1px solid rgba(225,6,0,0.3);border-radius:2px;padding:0.2rem 0.65rem;font-family:Rajdhani,sans-serif;font-size:0.72rem;color:#E10600;letter-spacing:0.08em;">XGBoost ML</span>
@@ -1007,7 +1041,7 @@ def render_telemetry(df):
             fig_vio.add_trace(go.Violin(
                 y=d["LapTime (s)"], name=drv,
                 box_visible=True, meanline_visible=True,
-                fillcolor=COMPOUND_COLORS.get("SOFF", "#E10600") + "20",
+                fillcolor=_hex_to_rgba(COMPOUND_COLORS.get("SOFF", "#E10600"), 32/255),
                 line_color=DRIVER_PALETTE[i % len(DRIVER_PALETTE)],
                 points=False,
                 hovertemplate=f"<b>{drv}</b><br>%{{y:.3f}}s<extra></extra>"
@@ -1033,7 +1067,7 @@ def render_telemetry(df):
             fig2.add_trace(go.Scatter(
                 x=pd.concat([avg["TyreLife"], avg["TyreLife"][::-1]]),
                 y=pd.concat([avg["median"]+avg["std"], (avg["median"]-avg["std"])[::-1]]),
-                fill="toself", fillcolor=color + "18",
+                fill="toself",                 fillcolor=_hex_to_rgba(color, 24/255),
                 line=dict(color="rgba(0,0,0,0)"), showlegend=False, hoverinfo="skip"
             ))
             fig2.add_trace(go.Scatter(
@@ -1144,7 +1178,7 @@ def render_telemetry(df):
                 y=cdata, name=cmpd,
                 marker_color=color,
                 line_color=color,
-                fillcolor=color + "25",
+                fillcolor=_hex_to_rgba(color, 37/255),
                 boxmean="sd",
                 hovertemplate=f"<b>{cmpd}</b><br>Tyre Age: %{{y}} laps<extra></extra>"
             ))
@@ -1163,13 +1197,34 @@ def render_digital_twin():
     <div class="f1-section-label" style="color:#00E06A;">◈ F1 DIGITAL TWIN — MULTI-DIMENSIONAL CIRCUIT ANALYSIS</div>
     """, unsafe_allow_html=True)
 
-    # ── Parametric Monaco circuit ──────────────────────────
+    # Circuit selector
+    c_sel_l, c_sel_r = st.columns([2, 3])
+    with c_sel_l:
+        circuit_keys = list(CIRCUIT_CATALOG.keys())
+        display_names = {k: f"{v['flag']}  {v['name']}  —  {v['country']}"
+                         for k, v in CIRCUIT_CATALOG.items()}
+        sel_key = st.selectbox(
+            "CIRCUIT",
+            circuit_keys,
+            index=circuit_keys.index("monaco"),
+            format_func=lambda k: display_names[k],
+            key="dt_circuit"
+        )
+    with c_sel_r:
+        sel = CIRCUIT_CATALOG[sel_key]
+        st.markdown(f"""<div style="font-family:Orbitron,sans-serif;font-size:0.5rem;
+                        color:#6E6E6E;letter-spacing:0.15em;margin-top:1.6rem;">
+                        LENGTH <span style="color:{sel['theme']};">{sel['length_km']:.3f} km</span>
+                        · {len(sel['corners'])} CORNERS
+                        · {len(sel.get('drs_zones',[]))} DRS ZONES</div>""",
+                    unsafe_allow_html=True)
+
+    # ── Parametric circuit geometry ──────────────────────────
     np.random.seed(42)
     N = 500
     t = np.linspace(0, 2 * np.pi, N)
 
-    x = (np.cos(t) * 1.2 + 0.32 * np.cos(2.5*t) + 0.14 * np.cos(5*t) + 0.06 * np.cos(8*t))
-    y = (np.sin(t) * 0.88 + 0.26 * np.sin(2*t) + 0.09 * np.sin(4*t) + 0.04 * np.sin(7*t))
+    x, y = _build_circuit_geometry(sel_key, N)
     z = 0.28 * np.sin(t*3) + 0.09 * np.cos(t*7) + 0.03 * np.sin(t*11)
 
     # Physics-based telemetry
@@ -1182,16 +1237,9 @@ def render_digital_twin():
     g_lat   = np.clip(curvature * 300 + np.random.normal(0,0.1,N), 0, 5.5)
     rpm     = np.clip(8000 + 4000*(speed/335), 8000, 15000)
 
-    # Named corners & straights
-    corners = [
-        (12,  "SAINTE DÉVOTE"),   (55,  "MASSENET"),
-        (80,  "CASINO"),          (130, "MIRABEAU"),
-        (175, "FAIRMONT"),        (210, "PORTIER"),
-        (260, "TUNNEL EXIT"),     (300, "NOUVELLE CHICANE"),
-        (360, "TABAC"),           (410, "PISCINE"),
-        (455, "RASCASSE"),        (490, "ANTHONY NOGHÈS"),
-    ]
-    drs_zones  = [(245, 290)]
+    # Named corners & straights (from selected circuit)
+    corners = sel["corners"]
+    drs_zones = sel.get("drs_zones", [])
     pit_entry  = 45
     pit_exit   = 70
 
@@ -1325,7 +1373,7 @@ def render_digital_twin():
             fig3d.update_layout(**f1_layout(
                 height=600,
                 title=dict(
-                    text=f"MONACO GP — 3D DIGITAL TWIN  ·  {color_mode.upper()} OVERLAY",
+                    text=f"{sel['name'].upper()} GP — 3D DIGITAL TWIN  ·  {color_mode.upper()} OVERLAY",
                     font=dict(family="Orbitron",size=11,color="#6E6E6E")
                 ),
                 scene=dict(
@@ -1437,7 +1485,7 @@ def render_digital_twin():
 
     # ── TAB 3: SIDE PROFILE ────────────────────────────────
     with tab_side:
-        lap_dist = np.linspace(0, 3.337, N)  # Monaco = 3.337 km
+        lap_dist = np.linspace(0, sel["length_km"], N)
         c1s, c2s = st.columns(2)
         with c1s:
             fig_elev = go.Figure()
@@ -1592,7 +1640,7 @@ def render_digital_twin():
             vertical_spacing=0.06,
             row_heights=[0.35, 0.25, 0.2, 0.2],
         )
-        lap_dist_km = np.linspace(0, 3.337, N)
+        lap_dist_km = np.linspace(0, sel["length_km"], N)
         # Speed
         fig_tl.add_trace(go.Scatter(x=lap_dist_km, y=speed, mode="lines",
             line=dict(color="#E10600",width=2), fill="tozeroy",
@@ -1627,7 +1675,7 @@ def render_digital_twin():
 
         fig_tl.update_layout(**f1_layout(
             height=640,
-            title=dict(text="FULL LAP TELEMETRY — MONACO GRAND PRIX",
+            title=dict(text=f"FULL LAP TELEMETRY — {sel['name'].upper()} GRAND PRIX",
                        font=dict(family="Orbitron",size=11,color="#6E6E6E")),
             showlegend=True,
             legend=dict(orientation="h",y=-0.04,font=dict(family="Rajdhani",size=10)),
@@ -1637,6 +1685,458 @@ def render_digital_twin():
         st.plotly_chart(fig_tl, use_container_width=True, config={"displayModeBar":False})
 
 
+
+# ─────────────────────────────────────────────────────────
+# SECTION: TRACK MAPS — MULTI-CIRCUIT BROWSE
+# ─────────────────────────────────────────────────────────
+CIRCUIT_CATALOG = {
+    "monaco": {
+        "name": "Monaco",
+        "country": "Monaco",
+        "flag": "🇲🇨",
+        "length_km": 3.337,
+        "corners": [
+            (12,  "SAINTE DÉVOTE"),   (55,  "MASSENET"),
+            (80,  "CASINO"),          (130, "MIRABEAU"),
+            (175, "FAIRMONT"),        (210, "PORTIER"),
+            (260, "TUNNEL"),          (300, "NOUVELLE"),
+            (360, "TABAC"),           (410, "PISCINE"),
+            (455, "RASCASSE"),        (490, "NOGHÈS"),
+        ],
+        "drs_zones": [(245, 290)],
+        "theme": "#E10600",
+        "panels": ["Street Circuit", "19 Corners", "0 Elevation"],
+    },
+    "silverstone": {
+        "name": "Silverstone",
+        "country": "Great Britain",
+        "flag": "🇬🇧",
+        "length_km": 5.891,
+        "corners": [
+            (40,  "ABBey"),     (90,  "FARM CURVE"),
+            (140, "VILLAGE"),   (180, "THE LOOP"),
+            (220, "APEX"),      (260, "BROOKLANDS"),
+            (300, "COPSE"),     (345, "MAGGOTTS"),
+            (380, "BECKETS"),   (420, "CHAPEL"),
+            (460, "STOWE"),     (490, "VALE"),
+        ],
+        "drs_zones": [(75, 130), (310, 360), (470, 500)],
+        "theme": "#00C8FF",
+        "panels": ["High Speed", "18 Corners", "Tech Aero"],
+    },
+    "miami": {
+        "name": "Miami",
+        "country": "United States",
+        "flag": "🇺🇸",
+        "length_km": 5.412,
+        "corners": [
+            (60,  "TURN 1"),   (120, "TURN 4-5"),
+            (180, "TURN 7"),   (230, "TURN 9"),
+            (280, "TURN 11"),  (340, "MARINA"),
+            (390, "TURN 14"),  (440, "TURN 16"),
+            (480, "HARD ROCK"),
+        ],
+        "drs_zones": [(90, 150), (350, 410)],
+        "theme": "#FF8700",
+        "panels": ["Street Hybrid", "19 Corners", "Hot Surface"],
+    },
+    "monza": {
+        "name": "Monza",
+        "country": "Italy",
+        "flag": "🇮🇹",
+        "length_km": 5.793,
+        "corners": [
+            (40,  "VARIANTE 1"), (90,  "CURVA GRANDE"),
+            (160, "DELLA ROGGIA"),(200,"LESMO 1"),
+            (240, "LESMO 2"),   (290, "SERRAGLIO"),
+            (330, "ASCARI"),    (380, "PARABOLICA"),
+        ],
+        "drs_zones": [(70, 130), (200, 270), (340, 470)],
+        "theme": "#DC143C",
+        "panels": ["Temple of Speed", "11 Corners", "Low Downforce"],
+    },
+    "spa": {
+        "name": "Spa-Francorchamps",
+        "country": "Belgium",
+        "flag": "🇧🇪",
+        "length_km": 7.004,
+        "corners": [
+            (30,  "LA SOURCE"),  (80,  "EAU ROUGE"),
+            (120, "RADILLON"),   (170, "KEMMEL"),
+            (220, "LES COMBES"), (280, "MALMEDY"),
+            (340, "RIVAGE"),     (390, "CAMPÔ"),
+            (440, "STAVELOT"),   (480, "BLANCHIMONT"),
+        ],
+        "drs_zones": [(110, 200), (250, 330), (470, 500)],
+        "theme": "#FFD000",
+        "panels": ["Longest Lap", "20 Corners", "Weather Risk"],
+    },
+    "suzuka": {
+        "name": "Suzuka",
+        "country": "Japan",
+        "flag": "🇯🇵",
+        "length_km": 5.807,
+        "corners": [
+            (30,  "FIRST CURVE"), (70,  "S CURVES"),
+            (140, "DUNLOP"),     (180, "DEGERNAU"),
+            (230, "SPENGLER"),   (270, "130R"),
+            (340, "TIGER"),      (390, "VALENTINA"),
+            (440, "LAST CURVE"), (480, "CASIO"),
+        ],
+        "drs_zones": [(260, 330), (430, 490)],
+        "theme": "#E10600",
+        "panels": ["Figure-8 Layout", "18 Corners", "Driver's Circuit"],
+    },
+    "singapore": {
+        "name": "Singapore",
+        "country": "Singapore",
+        "flag": "🇸🇬",
+        "length_km": 5.063,
+        "corners": [
+            (40,  "TURN 1"),     (90,  "TURN 3"),
+            (140, "TURN 5"),     (190, "TURN 7"),
+            (240, "TURN 10"),    (300, "TURN 13"),
+            (360, "TURN 16"),    (420, "TURN 19"),
+            (470, "TURN 22"),
+        ],
+        "drs_zones": [(80, 130), (380, 440)],
+        "theme": "#00E06A",
+        "panels": ["Night Race", "19 Corners", "Hot & Humid"],
+    },
+    "bahrain": {
+        "name": "Bahrain",
+        "country": "Bahrain",
+        "flag": "🇧🇭",
+        "length_km": 5.412,
+        "corners": [
+            (30,  "TURN 1"),    (80,  "TURN 2-3"),
+            (130, "TURN 4"),    (180, "TURN 5-6"),
+            (240, "TURN 9"),    (290, "TURN 10"),
+            (340, "TURN 11"),   (400, "TURN 13-14"),
+            (460, "TURN 15"),
+        ],
+        "drs_zones": [(60, 200), (250, 350), (380, 480)],
+        "theme": "#FF1801",
+        "panels": ["Desert Night", "15 Corners", "Heavy Braking"],
+    },
+}
+
+def _build_circuit_geometry(circuit_key, N=500):
+    """Return (x, y) numpy arrays for a circuit layout."""
+    t = np.linspace(0, 2*np.pi, N)
+    if circuit_key == "monaco":
+        x = (np.cos(t) * 1.2 + 0.32*np.cos(2.5*t) + 0.14*np.cos(5*t) + 0.06*np.cos(8*t))
+        y = (np.sin(t) * 0.88 + 0.26*np.sin(2*t) + 0.09*np.sin(4*t) + 0.04*np.sin(7*t))
+    elif circuit_key == "silverstone":
+        # Fast flowing, with apex curves — wide left/right sweep
+        x = (1.35*np.cos(t) + 0.20*np.cos(2*t+0.4) + 0.10*np.cos(4*t+0.8) + 0.04*np.cos(7*t))
+        y = (0.85*np.sin(t) + 0.22*np.sin(3*t+0.6) + 0.08*np.sin(6*t+0.3))
+    elif circuit_key == "miami":
+        # Blocky around stadium with chicanes
+        x = (1.20*np.cos(t) + 0.40*np.cos(2*t-0.5) + 0.15*np.cos(5*t) + 0.08*np.cos(9*t))
+        y = (0.78*np.sin(t) + 0.35*np.sin(2*t+1.2) + 0.10*np.sin(5*t+0.4))
+    elif circuit_key == "monza":
+        # Elongated, straights heavy
+        x = (1.55*np.cos(t) + 0.10*np.cos(2*t) + 0.05*np.cos(5*t))
+        y = (0.60*np.sin(t) + 0.25*np.sin(3*t+0.4) + 0.10*np.sin(6*t))
+    elif circuit_key == "spa":
+        # Long lap, big sweeping curves
+        x = (1.50*np.cos(t) + 0.25*np.cos(2*t+0.3) + 0.12*np.cos(4*t) + 0.05*np.cos(7*t))
+        y = (0.95*np.sin(t) + 0.18*np.sin(3*t) + 0.10*np.sin(5*t+0.6))
+    elif circuit_key == "suzuka":
+        # Figure-8 like: x has a self-intersecting character
+        x = (1.30*np.cos(t) + 0.35*np.cos(2*t-1.0) + 0.12*np.cos(5*t+0.5))
+        y = (0.90*np.sin(t) + 0.20*np.sin(3*t+1.0) + 0.08*np.sin(6*t))
+    elif circuit_key == "singapore":
+        # Tight street
+        x = (1.15*np.cos(t) + 0.40*np.cos(2.5*t+0.3) + 0.18*np.cos(5*t) + 0.06*np.cos(8*t))
+        y = (0.80*np.sin(t) + 0.30*np.sin(2.5*t) + 0.12*np.sin(5*t+0.5))
+    elif circuit_key == "bahrain":
+        # Mix of long curves and heavy braking zones
+        x = (1.25*np.cos(t) + 0.30*np.cos(2*t+0.6) + 0.12*np.cos(4*t) + 0.05*np.cos(7*t))
+        y = (0.90*np.sin(t) + 0.25*np.sin(3*t+0.4) + 0.10*np.sin(6*t+0.7))
+    else:
+        x = np.cos(t)
+        y = np.sin(t)
+    return x, y
+
+def _draw_circuit_minimap(circuit_key, speed_kph=None):
+    """Build a small 2D figure of a circuit layout. Returns a plotly figure."""
+    info = CIRCUIT_CATALOG[circuit_key]
+    x, y = _build_circuit_geometry(circuit_key, 500)
+    N = len(x)
+
+    fig = go.Figure()
+    # Track outline
+    fig.add_trace(go.Scatter(
+        x=x, y=y, mode="lines",
+        line=dict(color="rgba(255,255,255,0.10)", width=12),
+        hoverinfo="skip", showlegend=False
+    ))
+    # Speed-coloured racing line
+    if speed_kph is not None:
+        marker_color = speed_kph
+        colorscale = [[0,"#001AFF"],[0.35,"#00C8FF"],[0.65,"#F5C518"],[1,"#E10600"]]
+        cb_title = "km/h"
+    else:
+        marker_color = info["theme"]
+        colorscale = [[0, info["theme"]], [1, info["theme"]]]
+        cb_title = None
+    fig.add_trace(go.Scatter(
+        x=x, y=y, mode="markers",
+        marker=dict(
+            size=3, color=marker_color, colorscale=colorscale,
+            showscale=cb_title is not None,
+            colorbar=dict(title=dict(text=cb_title,font=dict(family="Rajdhani",size=8,color="#6E6E6E")),
+                          thickness=5,len=0.5,x=1.02,
+                          tickfont=dict(family="Rajdhani",color="#6E6E6E",size=7))
+        ),
+        hovertemplate="Speed: %{marker.color:.0f} km/h<extra></extra>" if speed_kph is not None else "<extra></extra>",
+        showlegend=False
+    ))
+    # Start/finish
+    fig.add_trace(go.Scatter(
+        x=[x[0]], y=[y[0]], mode="markers",
+        marker=dict(size=10, color="#FFFFFF", symbol="square",
+                    line=dict(color=info["theme"], width=2)),
+        hovertemplate="START/FINISH<extra></extra>",
+        showlegend=False
+    ))
+    # DRS zones
+    for s, e in info.get("drs_zones", []):
+        fig.add_trace(go.Scatter(
+            x=x[s:e], y=y[s:e], mode="lines",
+            line=dict(color="#00C8FF", width=2.5),
+            opacity=0.6, hoverinfo="skip", showlegend=False
+        ))
+    # Sector markers
+    sector_idxs = [0, N//3, 2*N//3]
+    sector_cols = ["#E10600", "#00C8FF", "#00E06A"]
+    for i, idx in enumerate(sector_idxs):
+        fig.add_trace(go.Scatter(
+            x=[x[idx]], y=[y[idx]], mode="markers+text",
+            marker=dict(size=11, color=sector_cols[i], line=dict(color="#FFF", width=1.2)),
+            text=[f"S{i+1}"], textposition="top center",
+            textfont=dict(family="Orbitron", size=8, color=sector_cols[i]),
+            hoverinfo="skip", showlegend=False
+        ))
+    # Corner labels (every other, smaller for minimap)
+    for idx, name in info["corners"][::2]:
+        fig.add_annotation(
+            x=x[idx], y=y[idx], text=name[:8],
+            showarrow=False, yshift=8,
+            font=dict(family="Rajdhani", size=6, color="rgba(255,255,255,0.45)")
+        )
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(showgrid=False, showticklabels=False, showline=False, zeroline=False, scaleanchor="y"),
+        yaxis=dict(showgrid=False, showticklabels=False, showline=False, zeroline=False),
+        margin=dict(l=0, r=0 if cb_title is None else 30, t=4, b=0),
+        height=180,
+    )
+    return fig
+
+def render_track_maps(df):
+    st.markdown("""
+    <div class="f1-section-label" style="color:#00C8FF;">◈ F1 CIRCUIT ATLAS — MULTI-COUNTRY TRACK MAPS</div>
+    """, unsafe_allow_html=True)
+
+    # Aggregate real per-race stats for the dataset's circuits
+    race_stats = {}
+    for race in df["Race"].dropna().unique():
+        if "Pre-Season" in race or "Testing" in race or "Track Session" in race:
+            continue
+        rdf = df[df["Race"] == race]
+        clean = rdf[(rdf["PitStop"] == 0) & rdf["LapTime (s)"].between(60, 200)]["LapTime (s)"]
+        if clean.empty:
+            continue
+        race_stats[race] = {
+            "avg_lap":   clean.mean(),
+            "fastest":   rdf[rdf["LapTime (s)"].between(60, 200)]["LapTime (s)"].min(),
+            "std":       clean.std(),
+        }
+
+    # Map circuit_key to a race name where possible
+    race_for_circuit = {
+        "monaco":     "Monaco Grand Prix",
+        "silverstone":"British Grand Prix",
+        "miami":      "Miami Grand Prix",
+        "monza":      "Italian Grand Prix",
+        "spa":        "Belgian Grand Prix",
+        "suzuka":     "Japanese Grand Prix",
+        "singapore":  "Singapore Grand Prix",
+        "bahrain":    "Bahrain Grand Prix",
+    }
+
+    st.markdown("""<div style="font-family:Rajdhani,sans-serif;font-size:0.7rem;
+                    color:#6E6E6E;letter-spacing:0.08em;margin-bottom:0.7rem;">
+                    SELECT A CIRCUIT BELOW — TRACK LAYOUT, CORNERS, DRS ZONES, SECTORS</div>""",
+                unsafe_allow_html=True)
+
+    # Dropdown for detailed single-circuit view
+    circuit_options = list(CIRCUIT_CATALOG.keys())
+    display_names = {k: f"{v['flag']}  {v['name']}  —  {v['country']}"
+                     for k, v in CIRCUIT_CATALOG.items()}
+    sel_key = st.selectbox(
+        "CIRCUIT",
+        circuit_options,
+        format_func=lambda k: display_names[k],
+        key="track_sel"
+    )
+    sel = CIRCUIT_CATALOG[sel_key]
+
+    # Detailed view of the selected circuit
+    c_det_l, c_det_r = st.columns([2, 1])
+    with c_det_l:
+        x, y = _build_circuit_geometry(sel_key, 500)
+        # Synthesise per-corner speed using curvature (rough)
+        dx = np.gradient(x); dy = np.gradient(y)
+        curv = np.abs(np.gradient(dx) + np.gradient(dy))
+        curv = curv / (curv.max() + 1e-9)
+        speed = 90 + 220 * (1 - curv)
+        np.random.seed(42)
+        speed = np.clip(speed + np.random.normal(0, 12, len(speed)), 70, 330)
+
+        big = go.Figure()
+        big.add_trace(go.Scatter(
+            x=x, y=y, mode="lines",
+            line=dict(color="rgba(255,255,255,0.08)", width=16),
+            hoverinfo="skip", showlegend=False
+        ))
+        big.add_trace(go.Scatter(
+            x=x, y=y, mode="markers",
+            marker=dict(
+                size=4, color=speed,
+                colorscale=[[0,"#001AFF"],[0.35,"#00C8FF"],[0.65,"#F5C518"],[1,"#E10600"]],
+                showscale=True,
+                colorbar=dict(title=dict(text="km/h",font=dict(family="Rajdhani",size=9,color="#6E6E6E")),
+                              thickness=7,len=0.6,x=1.02,
+                              tickfont=dict(family="Rajdhani",color="#6E6E6E",size=8))
+            ),
+            hovertemplate="Speed: %{marker.color:.0f} km/h<extra></extra>",
+            showlegend=False
+        ))
+        # DRS zones
+        for s, e in sel.get("drs_zones", []):
+            big.add_trace(go.Scatter(
+                x=x[s:e], y=y[s:e], mode="lines",
+                line=dict(color="#00C8FF", width=3), opacity=0.65,
+                hoverinfo="skip", showlegend=False
+            ))
+        # Sectors
+        N = len(x)
+        for i, idx in enumerate([0, N//3, 2*N//3]):
+            col = ["#E10600", "#00C8FF", "#00E06A"][i]
+            big.add_trace(go.Scatter(
+                x=[x[idx]], y=[y[idx]], mode="markers+text",
+                marker=dict(size=13, color=col, line=dict(color="#FFF", width=1.5)),
+                text=[f"S{i+1}"], textposition="top center",
+                textfont=dict(family="Orbitron", size=9, color=col),
+                showlegend=False
+            ))
+        # Start/finish
+        big.add_trace(go.Scatter(
+            x=[x[0]], y=[y[0]], mode="markers",
+            marker=dict(size=12, color="#FFFFFF", symbol="square",
+                        line=dict(color=sel["theme"], width=2.5)),
+            hoverinfo="skip", showlegend=False
+        ))
+        # Corner labels
+        for idx, name in sel["corners"]:
+            big.add_annotation(
+                x=x[idx], y=y[idx], text=name[:12],
+                showarrow=False, yshift=10,
+                font=dict(family="Rajdhani", size=8, color="rgba(255,255,255,0.55)")
+            )
+        big.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(showgrid=False, showticklabels=False, showline=False, zeroline=False, scaleanchor="y"),
+            yaxis=dict(showgrid=False, showticklabels=False, showline=False, zeroline=False),
+            margin=dict(l=0, r=60, t=10, b=0),
+            height=440,
+        )
+        st.plotly_chart(big, use_container_width=True, config={"displayModeBar": False})
+
+    with c_det_r:
+        st.markdown(f"""<div style="font-family:Orbitron,sans-serif;font-size:0.62rem;
+                        letter-spacing:0.18em;color:{sel['theme']};margin-bottom:0.6rem;">
+                        ◈ {sel['flag']}  {sel['name'].upper()}</div>""",
+                    unsafe_allow_html=True)
+        # Three feature panels
+        for panel in sel["panels"]:
+            st.markdown(f"""
+            <div style="background:rgba(255,255,255,0.03);border-left:2px solid {sel['theme']};
+                        border-radius:0 4px 4px 0;padding:0.45rem 0.7rem;margin-bottom:0.4rem;">
+              <div style="font-family:Rajdhani;font-size:0.85rem;color:#F0F0F0;font-weight:600;">
+                {panel}
+              </div>
+            </div>""", unsafe_allow_html=True)
+        # Real dataset stats for this circuit (if race exists in dataset)
+        race_name = race_for_circuit.get(sel_key)
+        if race_name and race_name in race_stats:
+            rs = race_stats[race_name]
+            st.markdown(f"""<div style="font-family:Orbitron,sans-serif;font-size:0.5rem;
+                            color:#6E6E6E;letter-spacing:0.15em;margin:0.7rem 0 0.4rem;">
+                            ◉ DATASET TELEMETRY</div>""", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style="background:rgba(0,200,255,0.04);border:1px solid rgba(0,200,255,0.12);
+                        border-radius:4px;padding:0.6rem;">
+              <div style="display:flex;justify-content:space-between;margin-bottom:0.3rem;">
+                <span style="font-family:Share Tech Mono;font-size:0.55rem;color:#A0A0A0;">AVG LAP</span>
+                <span style="font-family:Orbitron;font-size:0.85rem;color:#FFD700;font-weight:700;">
+                  {rs['avg_lap']:.2f}s</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:0.3rem;">
+                <span style="font-family:Share Tech Mono;font-size:0.55rem;color:#A0A0A0;">FASTEST</span>
+                <span style="font-family:Orbitron;font-size:0.85rem;color:#00E06A;font-weight:700;">
+                  {rs['fastest']:.2f}s</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="font-family:Share Tech Mono;font-size:0.55rem;color:#A0A0A0;">STD DEV</span>
+                <span style="font-family:Orbitron;font-size:0.85rem;color:#00C8FF;font-weight:700;">
+                  {rs['std']:.2f}s</span>
+              </div>
+            </div>""", unsafe_allow_html=True)
+        # DRS / corner info
+        st.markdown(f"""<div style="font-family:Orbitron,sans-serif;font-size:0.5rem;
+                        color:#6E6E6E;letter-spacing:0.15em;margin:0.8rem 0 0.4rem;">
+                        ◉ KEY INFO</div>""", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="font-family:Rajdhani;font-size:0.7rem;color:#A0A0A0;line-height:1.7;">
+          <div><span style="color:#00C8FF;font-weight:600;">●</span> DRS ZONES: {len(sel.get('drs_zones', []))}</div>
+          <div><span style="color:{sel['theme']};font-weight:600;">●</span> CORNERS: {len(sel['corners'])}</div>
+          <div><span style="color:#FFD700;font-weight:600;">●</span> LENGTH: {sel['length_km']:.3f} km</div>
+          <div><span style="color:#00E06A;font-weight:600;">●</span> COUNTRY: {sel['country']}</div>
+        </div>""", unsafe_allow_html=True)
+
+    # Grid of all circuits for comparison
+    st.markdown("---")
+    st.markdown(f"""<div style="font-family:Orbitron,sans-serif;font-size:0.6rem;
+                    letter-spacing:0.18em;color:#6E6E6E;margin-bottom:0.7rem;">
+                    ◈ ALL CIRCUITS — OVERVIEW GRID</div>""",
+                unsafe_allow_html=True)
+
+    keys = list(CIRCUIT_CATALOG.keys())
+    # 4 columns x 2 rows
+    for row_start in range(0, len(keys), 4):
+        cols = st.columns(4)
+        for j, k in enumerate(keys[row_start:row_start+4]):
+            with cols[j]:
+                v = CIRCUIT_CATALOG[k]
+                st.markdown(f"""
+                <div style="font-family:Orbitron,sans-serif;font-size:0.7rem;
+                            color:{v['theme']};font-weight:700;letter-spacing:0.08em;
+                            margin-bottom:0.3rem;">
+                  {v['flag']} {v['name']}
+                </div>
+                <div style="font-family:Rajdhani,sans-serif;font-size:0.55rem;
+                            color:#6E6E6E;letter-spacing:0.06em;margin-bottom:0.25rem;">
+                  {v['country']} · {v['length_km']:.3f} km
+                </div>""", unsafe_allow_html=True)
+                fig_mini = _draw_circuit_minimap(k)
+                st.plotly_chart(fig_mini, use_container_width=True, config={"displayModeBar": False})
 
 # ─────────────────────────────────────────────────────────
 # SECTION: TYRE 3D ANALYTICS
@@ -1778,13 +2278,23 @@ def render_team_performance(df):
             total_pits = int(team_df["PitStop"].sum())
             pit_rate = team_df["PitStop"].mean() * 100
             
-            # Lap time analysis
-            lap_times = team_df["LapTime (s)"].between(60, 200)
-            if lap_times.any():
-                avg_lap_time = team_df[lap_times]["LapTime (s)"].mean()
-                fastest_lap = team_df[lap_times]["LapTime (s)"].min()
-                lap_time_std = team_df[lap_times]["LapTime (s)"].std()
-                consistency_score = max(0, 100 - lap_time_std * 10)
+            # Lap time analysis — exclude pit-in/out laps, use per-race MAD for meaningful consistency
+            clean_laps = team_df[(team_df["PitStop"] == 0) & team_df["LapTime (s)"].between(60, 200)]
+            if not clean_laps.empty:
+                avg_lap_time = clean_laps["LapTime (s)"].mean()
+                fastest_lap = team_df[team_df["LapTime (s)"].between(60, 200)]["LapTime (s)"].min()
+                lap_time_std = clean_laps["LapTime (s)"].std()
+                # Per-race median absolute deviation (robust to outliers & circuit mix)
+                per_race_cv = []
+                for _, g in clean_laps.groupby("Race"):
+                    if len(g) < 5:
+                        continue
+                    med = g["LapTime (s)"].median()
+                    mad = (g["LapTime (s)"] - med).abs().median()
+                    if med > 0:
+                        per_race_cv.append(mad / med)
+                avg_cv = float(np.mean(per_race_cv)) if per_race_cv else 0.0
+                consistency_score = max(0.0, min(100.0, 100 * (1 - avg_cv * 15)))
             else:
                 avg_lap_time = fastest_lap = lap_time_std = 0
                 consistency_score = 0
@@ -1829,7 +2339,7 @@ def render_team_performance(df):
         with team_cols[i]:
             team_data = F1_TEAMS[team_name]
             
-            st.markdown(f"""
+            st.html(f"""
             <div style="background:linear-gradient(135deg,{team_data['color']},{team_data['secondary_color']});
                         border:1px solid rgba(255,255,255,0.15);
                         border-radius:8px;padding:1.2rem;position:relative;overflow:hidden;">
@@ -1844,7 +2354,7 @@ def render_team_performance(df):
                             letter-spacing:0.06em;margin-bottom:0.3rem;">
                     {team_data['drivers'][0]} • {team_data['drivers'][1]}
                 </div>
-                
+
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;margin-top:0.6rem;">
                     <div>
                         <div style="font-family:'Share Tech Mono',monospace;font-size:0.5rem;color:#A0A0A0;
@@ -1872,7 +2382,7 @@ def render_team_performance(df):
                     </div>
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+            """)
 
     # Detailed comparison table
     st.markdown("---")
@@ -2179,7 +2689,7 @@ def render_driver_pit_experience(df):
             colorscale=[
                 [0.0, "#0A0A0A"],
                 [0.4, "#1A3A1A"],
-                [0.7, "#F5C51850"],
+                [0.7, _hex_to_rgba("#F5C518", 80/255)],
                 [1.0, "#E10600"],
             ],
             text=np.round(heatmap_data.values, 1),
@@ -2548,6 +3058,7 @@ def render_sidebar():
             "⚡  PREDICTION ENGINE":    "prediction",
             "📡  TELEMETRY ANALYTICS":  "telemetry",
             "🌐  DIGITAL TWIN (3D)":    "digital_twin",
+            "🗺️  CIRCUIT ATLAS":        "track_maps",
             "🔴  TYRE ANALYTICS (3D)":  "tyre",
             "👥  TEAM PERFORMANCE":     "team_performance",
             "👤  DRIVER EXPERIENCE":    "driver_experience",
@@ -2566,7 +3077,7 @@ def render_sidebar():
         st.markdown("""
         <div style="height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
                     margin: 1rem 0;"></div>
-        """)
+        """, unsafe_allow_html=True)
 
         # F1 Teams Quick Reference
         st.markdown("""
@@ -2595,7 +3106,7 @@ def render_sidebar():
         st.markdown("""
         <div style="height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
                     margin: 1rem 0;"></div>
-        """)
+        """, unsafe_allow_html=True)
 
         # Live status panel
         st.markdown("""
@@ -2615,7 +3126,7 @@ def render_sidebar():
         st.markdown("""
         <div style="margin-top: 1.5rem; text-align: center;">
           <div style="font-family: Rajdhani, sans-serif; font-size: 0.6rem; color: #2A2A2A; letter-spacing: 0.08em;">
-            F1 DIGITAL TWIN PLATFORM<br>XGBoost · v2025
+            F1 PIT WALL PLATFORM<br>XGBoost · v2025
           </div>
         </div>
         """, unsafe_allow_html=True)
@@ -2658,6 +3169,9 @@ def main():
 
     elif page == "digital_twin":
         render_digital_twin()
+
+    elif page == "track_maps":
+        render_track_maps(df)
 
     elif page == "tyre":
         render_tyre_analytics(df)
