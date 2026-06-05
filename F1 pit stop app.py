@@ -375,7 +375,17 @@ def load_model():
         with st.spinner("Training pit-stop model (one-time, ~30s)..."):
             _train_pitstop_model(path)
     model = xgb.XGBClassifier()
-    model.load_model(path)
+    try:
+        model.load_model(path)
+    except TypeError:
+        st.warning("Stale model file detected (xgboost version mismatch). Retraining...")
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        with st.spinner("Retraining pit-stop model..."):
+            _train_pitstop_model(path)
+        model.load_model(path)
     return model
 
 def _train_pitstop_model(path):
