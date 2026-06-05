@@ -374,6 +374,8 @@ def load_model():
     if not os.path.exists(path):
         with st.spinner("Training pit-stop model (one-time, ~30s)..."):
             _train_pitstop_model(path)
+    if not hasattr(xgb.XGBClassifier, "_estimator_type"):
+        xgb.XGBClassifier._estimator_type = "classifier"
     model = xgb.XGBClassifier()
     try:
         model.load_model(path)
@@ -409,6 +411,8 @@ def _train_pitstop_model(path):
         subsample=0.8, colsample_bytree=0.8,
         eval_metric="auc", n_jobs=-1, random_state=42,
     )
+    if not hasattr(xgb.XGBClassifier, "_estimator_type"):
+        xgb.XGBClassifier._estimator_type = "classifier"
     model.fit(X, y)
     model.save_model(path)
 
