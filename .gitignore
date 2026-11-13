@@ -1,7 +1,10 @@
 ﻿f1_pitstop_model.pkl
-f1_pitstop_model.pkl
-f1_pitstop_model.json
-f1_pitstop_model.pkl
 f1_pitstop_model.json
 __pycache__/
 *.pyc
+f1-strategy-web/
+.venv/
+f1-strategy-platform.zip
+f1-strategy-web.lnk
+README.original.md
+backend/model_store/.staging/
