@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "id": "lightgbm-pit-stop-1.0.0",
+      "name": "LightGBM Pit-Stop",
+      "framework": "lightgbm",
+      "version": "1.0.0",
+      "status": "champion",
+      "task": "pitstop_binary_classification",
+      "threshold": 0.64,
+      "artifact": "model.json",
+      "scaler": null,
+      "encoders": "encodings.json",
+      "feature_schema": [
+        "LapNumber",
+        "Stint",
+        "TyreLife",
+        "Position",
+        "LapTime",
+        "LapTime_Delta",
+        "Cumulative_Degradation",
+        "RaceProgress",
+        "Normalized_TyreLife",
+        "Position_Change",
+        "Driver_enc",
+        "Compound_enc"
+      ],
+      "metrics": {
+        "accuracy": 0.9268,
+        "precision": 0.8339,
+        "recall": 0.8901,
+        "f1": 0.861,
+        "rocAuc": 0.975,
+        "threshold": 0.64,
+        "testRows": 20275.0
+      },
+      "notes": "Reference champion — verified replica of the documented pipeline (same dataset, features, split, threshold).",
+      "registered_at": "2026-11-13T18:49:30Z",
+      "sha256": {
+        "model": "406c2f32fb4909ca38746b16abb3141463e10f65a90c1a8926301865246a33bd",
+        "scaler": null,
+        "encoders": "19b5bd5af7c77c4318162f0ccff3e35fe564d5cc71d87b69197c50005d968742"
+      },
+      "size_bytes": 2729161
+    },
+    {
+      "id": "xgboost-pit-stop-1.0.0",
+      "name": "XGBoost Pit-Stop",
+      "framework": "xgboost",
+      "version": "1.0.0",
+      "status": "candidate",
+      "task": "pitstop_binary_classification",
+      "threshold": 0.6,
+      "artifact": "model.json",
+      "scaler": null,
+      "encoders": "encodings.json",
+      "feature_schema": [
+        "LapNumber",
+        "Stint",
+        "TyreLife",
+        "Position",
+        "LapTime",
+        "LapTime_Delta",
+        "Cumulative_Degradation",
+        "RaceProgress",
+        "Normalized_TyreLife",
+        "Position_Change",
+        "Driver_enc",
+        "Compound_enc"
+      ],
+      "metrics": {
+        "accuracy": 0.8856,
+        "precision": 0.7312,
+        "recall": 0.8715,
+        "f1": 0.7952,
+        "rocAuc": 0.9538,
+        "threshold": 0.6,
+        "testRows": 20275.0
+      },
+      "notes": "Reference candidate — level-wise boosting baseline for comparison.",
+      "registered_at": "2026-11-13T18:49:35Z",
+      "sha256": {
+        "model": "20364878e6e074cd9ddccd91d02dadc5b8934ffcd0e60fd3848f1d0e7433a7bb",
+        "scaler": null,
+        "encoders": "19b5bd5af7c77c4318162f0ccff3e35fe564d5cc71d87b69197c50005d968742"
+      },
+      "size_bytes": 2365086
+    },
+    {
+      "id": "logreg-pit-stop-1.0.0",
+      "name": "LogReg Pit-Stop",
+      "framework": "sklearn",
+      "version": "1.0.0",
+      "status": "candidate",
+      "task": "pitstop_binary_classification",
+      "threshold": 0.5,
+      "artifact": "model.joblib",
+      "scaler": "scaler.joblib",
+      "encoders": "encodings.json",
+      "feature_schema": [
+        "LapNumber",
+        "Stint",
+        "TyreLife",
+        "Position",
+        "LapTime",
+        "LapTime_Delta",
+        "Cumulative_Degradation",
+        "RaceProgress",
+        "Normalized_TyreLife",
+        "Position_Change",
+        "Driver_enc",
+        "Compound_enc"
+      ],
+      "metrics": {
+        "accuracy": 0.7654,
+        "precision": 0.5994,
+        "recall": 0.2393,
+        "f1": 0.342,
+        "rocAuc": 0.7745,
+        "threshold": 0.5,
+        "testRows": 20275.0
+      },
+      "notes": "Reference candidate — linear baseline, demonstrates the scaler serving path (features are standardised before inference).",
+      "registered_at": "2026-11-13T18:49:35Z",
+      "sha256": {
+        "model": "7353a89c95fdc5fb259193088886a04b7195fbf959671762973f799fbe8d7242",
+        "scaler": "18db655cca86fbb62a5c65b2fc6a56c485d01952bbdefebbd124c6ee0b028b8a",
+        "encoders": "19b5bd5af7c77c4318162f0ccff3e35fe564d5cc71d87b69197c50005d968742"
+      },
+      "size_bytes": 959
+    }
+  ]
+}
