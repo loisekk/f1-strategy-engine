@@ -1,0 +1,42 @@
+# F1 Strategy Platform — full stack in containers
+#   docker compose up --build
+# UI: http://localhost:3000 · ML API: http://localhost:8000/docs
+#
+# model_store is a named volume so registered models survive container rebuilds.
+# To pin an API key, create backend/.env with ML_API_KEY=… before starting.
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      ML_HOST: 0.0.0.0
+      ML_PORT: "8000"
+      ML_CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+    volumes:
+      - model_store:/app/model_store
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_ML_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_ML_API_URL: http://localhost:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  model_store:
